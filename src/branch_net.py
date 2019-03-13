@@ -10,11 +10,12 @@ from torch.utils.data import Dataset, DataLoader
 import argparse
 from torch.autograd import Function
 from sklearn.tree import DecisionTreeClassifier
+COSMO=7
 HOD=8
 LABEL=10+7
 ERROR = 11+7
-NPL = 128  #neurons per layer
-CNPL= 4048
+NPL = 16  #neurons per layer
+CNPL= 16
 #data class.  loads data from csv file which is stored column wise.  column 0-7 hod training params, column 8 radius training param,
 #column 9 regression target, column 10 error on data point
 class DataClass(Dataset):
@@ -24,7 +25,7 @@ class DataClass(Dataset):
         self.labels = self.file[:,16]
         self.hod_params = self.file[:,7:15]
         self.radius = self.file[:,15:16]
-        self.error = self.file[:,17]
+        #self.error = self.file[:,17]
         self.cosmo_params = self.file[:,:7]
         
 
@@ -35,52 +36,54 @@ class DataClass(Dataset):
         hod_param = self.hod_params[idx]
         labels = self.labels[idx]
         radii = self.radius[idx]
-        error = self.error[idx]
+        #error = self.error[idx]
         cosmo_param = self.cosmo_params[idx]
-        sample = {'inputs' : {'cosmo_params': cosmo_param, 'hod_params': hod_param, 'radius': radii} , 'label': labels, 'error':error}
+        sample = {'inputs' : {'cosmo_params': cosmo_param, 'hod_params': hod_param, 'radius': radii} , 'label': labels}
         return sample
 
 #branch neural net.  causes radius parameter to "feel" more effect of loss function and reduces computation
 class BranchNet(nn.Module):
     def __init__(self):
         super(BranchNet, self).__init__()
-        #self.cosmo_fc1 = nn.Linear(COSMO,7)
-        #self.cosmo_fc2 = nn.Linear(7,1)
-        	
+        self.cosmo_fc1 = nn.Linear(COSMO,NPL)
+        self.cosmo_fc2 = nn.Linear(NPL,NPL)
+        self.cosmo_fc3 = nn.Linear(NPL,1)
+            
         self.hod_fc1 = nn.Linear(8,NPL)
         self.hod_fc2 = nn.Linear(NPL,NPL)
-        self.hod_fc3 = nn.Linear(NPL,NPL)  #change 7 to 256 in each of above
-        self.hod_fc4 = nn.Linear(NPL,1)  #change 7 to 256 in each of above
-        
-        self.combo_fc1 = nn.Linear(2, CNPL*3) #3,256
-        self.combo_fc2 = nn.Linear(CNPL*3,CNPL*3)  #256,1
-        self.combo_fc3 = nn.Linear(CNPL*3,1)  #256,1
-        #self.combo_fc4 = nn.Linear(128, 1)
+        self.hod_fc3 = nn.Linear(NPL,1)  #change 7 to 256 in each of above
 
+        self.combo_fc1 = nn.Linear(3, CNPL) #3,256
+        self.combo_fc2 = nn.Linear(CNPL,1)  #256,1
+        """self.combo_fc3 = nn.Linear(CNPL,32)  #256,1
+        self.combo_fc4 = nn.Linear(32,16)  #256,1
+        self.combo_fc5 = nn.Linear(16,1)  #256,1
+        """
 
     def forward(self, x):
-        """cosmo_out = self.cosmo_fc1(x['cosmo_params'].float())
+        cosmo_out = self.cosmo_fc1(x['cosmo_params'].float())
         cosmo_out = torch.tanh(cosmo_out)
-        cosmo_out = self.cosmo_fc2(cosmo_out)"""
-
+        cosmo_out = self.cosmo_fc2(cosmo_out)
+        cosmo_out = torch.tanh(cosmo_out)
+        cosmo_out = self.cosmo_fc3(cosmo_out)
 
         hod_out = self.hod_fc1(x['hod_params'].float())
         hod_out = torch.tanh(hod_out)
         hod_out = self.hod_fc2(hod_out)
         hod_out = torch.tanh(hod_out)
         hod_out = self.hod_fc3(hod_out)
-        hod_out = torch.tanh(hod_out)
-        hod_out = self.hod_fc4(hod_out)
         
 
-        combo_in = torch.cat((hod_out, x['radius'].float()), 1)
+        combo_in = torch.cat((cosmo_out, hod_out, x['radius'].float()), 1)
         out = self.combo_fc1(combo_in)
         out = torch.tanh(out)
         out = self.combo_fc2(out)
-        out = torch.tanh(out)
+        """out = torch.tanh(out)
         out = self.combo_fc3(out)
-        #out = torch.tanh(out)
-        #out = self.combo_fc4(out)
+        out = torch.tanh(out)
+        out = self.combo_fc4(out)
+        out = torch.tanh(out)
+        out = self.combo_fc5(out)"""
         return out
 
 #keep training time statistics
@@ -123,17 +126,17 @@ def ChiSquare(outputs, labels, errors):
     return loss, ratio
 
 def adjust_learning_rate(optimizer, epoch, rate):
-    lr = rate*(0.5**(epoch//200))
+    lr = rate*(0.1*(epoch//20000))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
 #train network and keep statistics
 def train(model, optimizer, loss_func, data_loader, epochs, scheduler, laps):
     start_time = monotonic()
-    if loss_func=='chi-squared':
-        criterion = ChiSquare
-    else:
-        criterion = nn.MSELoss()
+    #if loss_func=='chi-squared':
+    #    criterion = ChiSquare
+    #else:
+    criterion = nn.MSELoss()
     epoch_time = timer()
     load_time = timer()
     compute_time = timer()
@@ -145,49 +148,48 @@ def train(model, optimizer, loss_func, data_loader, epochs, scheduler, laps):
         epoch_time_s = monotonic()
         running_loss = 0.0
         load_time_s = monotonic()
-        chi_square_per_point=[]		
+        chi_square_per_point=[]    	
         for i, data in enumerate(data_loader, 0):
-        	#load and keep stats for c2 and c3
-        	inputs = data['inputs']
-        	labels = data['label']
-        	errors = data['error']
+            #load and keep stats for c2 and c3
+            inputs = data['inputs']
+            labels = data['label']
+            #errors = data['error']
 
-        	errors = errors.float()
-        	labels=labels.float()
-        	#inputs=inputs.view(-1,1)
-        	labels = labels.view(-1,1)
-        	errors = errors.view(-1,1)
-        	#inputs, labels = inputs.to(device), labels.to(device)
-        	load_time_f = monotonic()
-        	
+            #errors = errors.float()
+            labels=labels.float()
+            #inputs=inputs.view(-1,1)
+            labels = labels.view(-1,1)
+            #errors = errors.view(-1,1)
+            #inputs, labels = inputs.to(device), labels.to(device)
+            load_time_f = monotonic()
+            
 
-        	#feed forward, calc gradients, update params and keep stats for c2
-        	comp_time_s = monotonic()			
-        	optimizer.zero_grad()
-        	outputs = model(inputs)
+            #feed forward, calc gradients, update params and keep stats for c2
+            comp_time_s = monotonic()			
+            optimizer.zero_grad()
+            outputs = model(inputs)
 
-        	if loss_func == 'chi-squared':
-        		pred_chi = criterion(outputs, labels, errors)
-        		loss=pred_chi[0]
-        		chi_square_per_point=np.append(chi_square_per_point,pred_chi[1].detach().numpy())
-        	else:
-        		loss = criterion(outputs, labels)
-        	
-        	loss.backward()
-        	optimizer.step()	
-        	comp_time_f = monotonic()
-        	
-        	#stats, running loss
-        	load_time.update((load_time_f-load_time_s))
-        	compute_time.update((comp_time_f-comp_time_s))
-        	running_loss+=loss.item()
+            #if loss_func == 'chi-squared':
+            #	pred_chi = criterion(outputs, labels, errors)
+            #	loss=pred_chi[0]
+            #	chi_square_per_point=np.append(chi_square_per_point,pred_chi[1].detach().numpy())
+            #else:
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()	
+            comp_time_f = monotonic()
+            
+            #stats, running loss
+            load_time.update((load_time_f-load_time_s))
+            compute_time.update((comp_time_f-comp_time_s))
+            running_loss+=loss.item()
 
         chi_square_per_epoch.append(running_loss)
         epoch_time_f = monotonic()
         epoch_time.update((epoch_time_f-epoch_time_s))
         #scheduler.step(running_loss)
         #adjust_learning_rate(optimizer, epoch+100*laps, 0.001)
-        print("epoch:", epoch+100*laps, "chi-square:", np.average(chi_square_per_point))
+        print("epoch:", epoch+100*laps, "loss:", running_loss)
     end_time = monotonic()
     labels = labels.detach().numpy()
     outputs = outputs.detach().numpy()
@@ -199,28 +201,28 @@ def test(model, loss_func, data_loader, size):
     test_loss = 0.0
     Labels = None
     output = None
-    if loss_func=='chi-squared':
-        criterion = ChiSquare
-    else:
-        criterion = nn.MSELoss().to(device)
+    #if loss_func=='chi-squared':
+    #    criterion = ChiSquare
+    #else:
+    criterion = nn.MSELoss()
     fractional_error=np.zeros((size,1),dtype=float) 
     for i, data in enumerate(data_loader, 0):
-        	inputs = data['inputs']
-        	labels = data['label']
-        	errors = data['error']
-        	errors=errors.float()
-        	errors=errors.view(-1,1)
-        	labels=labels.float()
-        	labels = labels.view(-1,1)
-        	#model.eval()
-        	output = model(inputs)
+            inputs = data['inputs']
+            labels = data['label']
+            errors = data['error']
+            errors=errors.float()
+            errors=errors.view(-1,1)
+            labels=labels.float()
+            labels = labels.view(-1,1)
+            #model.eval()
+            output = model(inputs)
 
-        	if loss_func == 'chi-squared':
-        		test_loss+=criterion(output,labels, errors)[0]
-        	else:
-        		test_loss+=criterion(output, labels)
-        	print("test chi-squared:",test_loss)
-        	fractional_error+=abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
+            #if loss_func == 'chi-squared':
+            #	test_loss+=criterion(output,labels, errors)[0]
+            #else:
+            test_loss+=criterion(output, labels)
+            print("test loss:", test_loss)
+            fractional_error+=abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
     labels = labels.detach().numpy()
     output = output.detach().numpy()
     return labels, output, test_loss, fractional_error
@@ -246,35 +248,36 @@ if __name__=="__main__":
     print ('device:', device)
 
     
-    training_data = DataClass('/home/jcd496/aemulus/DATA/training/cosmo_breakdown/cosmo_0_training_data.csv')    
+    training_data = DataClass('/home/jcd496/Aemulus/DATA/training/cosmo_training_data_scaled.csv')    
     training_data_loader = DataLoader(training_data, batch_size=2000, shuffle=True, num_workers=args.workers)
     print("training data size", len(training_data))
     
     branch_net = BranchNet()
     #branch_net.to(device)
 
-    if args.loss_func is 'chi-squared':
-        lrate = 0.001
-    else:
-        #criterion = nn.MSELoss()
-        lrate = 0.00001
-    optimizer = optim.SGD(branch_net.parameters(), lr=lrate, momentum=0.9,nesterov=False) 
-    #optimizer = optim.Adam(branch_net.parameters()) 
+    #if args.loss_func is 'chi-squared':
+    #    lrate = 0.0001
+    #else:
+    #   criterion = nn.MSELoss()
+    lrate = 0.01
+    #optimizer = optim.SGD(branch_net.parameters(), lr=lrate, momentum=0.9,nesterov=True) 
+    optimizer = optim.Adam(branch_net.parameters()) 
     print("learning rate: ", lrate)
-    #state = torch.load('model.pt')
+    #state = torch.load('model.cs165.pt')
     #branch_net.load_state_dict(state['model'])
     #optimizer.load_state_dict(state['optimizer'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
     #UNCOMMENT BELOW TO TRAIN 
-    chisq=500
+    loss=500
     laps=0
-    while chisq>200:
-        outputs, labels, training_chisquares, training_chisquares_pointwise = train(branch_net, optimizer, args.loss_func, training_data_loader, args.epochs, scheduler, laps)
-        chisq=np.average(training_chisquares_pointwise)
-        print("training chi-square:", chisq )
+    while loss > 100:
+        outputs, labels, loss_per_epoch, training_chisquares_pointwise = train(branch_net, optimizer, args.loss_func, training_data_loader, args.epochs, scheduler, laps)
+        #chisq=np.average(loss_per_epoch)
+        loss = nn.MSELoss(outputs, labels)
+        print("training loss:", loss )
         laps+=1
 
-    test_data = DataClass('/home/jcd496/aemulus/DATA/training/cosmo_breakdown/cosmo_0_test_data.csv')
+    test_data = DataClass('/home/jcd496/Aemulus/DATA/test/cosmo_test_data_scaled.csv')
     test_data_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=True, num_workers=args.workers)
     print("test data size", len(test_data))
     #COMMENT BELOW TO TRAIN, model.1 PRETRAINED AFTER 2000 EPOCHS ON HPC, model.pt is 1000 epochs. APPROX 60 MINUTES
@@ -282,7 +285,7 @@ if __name__=="__main__":
 
     labels, output, test_loss, fractional_error = test(branch_net, args.loss_func, test_data_loader,len(test_data))
     print("Fractional error:", np.average(fractional_error))
-    torch.save({'model': branch_net.state_dict(), 'optimizer': optimizer.state_dict()} , 'model.pt')
+    torch.save({'model': branch_net.state_dict(), 'optimizer': optimizer.state_dict()} , 'model.scaled.loss100.pt')
     """if args.loss_func == 'chi-squared':
         print("pointwise:", training_chisquares_pointwise.shape)
         print("avg:", np.average(training_chisquares_pointwise))
