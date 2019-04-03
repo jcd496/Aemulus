@@ -199,7 +199,7 @@ if __name__=="__main__":
     
     #COMMENT BELOW TO TRAIN
     if(args.load_path):
-        state = torch.load('sicn_18000.rprop.pt')
+        state = torch.load(args.load_path)
         branch_net.load_state_dict(state['model'])
         optimizer.load_state_dict(state['optimizer'])
     
