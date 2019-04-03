@@ -12,7 +12,7 @@ from torch.autograd import Function
 HOD=8
 LABEL=10+7
 ERROR = 11+7
-NPL = 16  #neurons per layer
+NPL = 1024#16  #neurons per layer
 #data class.  loads data from csv file which is stored column wise.  column 0-7 hod training params, column 8 radius training param,
 #column 9 regression target, column 10 error on data point
 class DataClass(Dataset):
@@ -86,7 +86,7 @@ def ChiSquare(outputs, labels, errors):
     return loss, ratio
 
 #train network and keep statistics
-def train(model, optimizer, loss_func, data_loader, epochs):
+def train(model, optimizer, loss_func, data_loader, epochs, device):
     start_time = monotonic()
     criterion = nn.MSELoss()
     epoch_time = timer()
@@ -105,6 +105,7 @@ def train(model, optimizer, loss_func, data_loader, epochs):
             labels = data['label']
             
             labels=labels.float()
+            inputs, labels = inputs.to(device), labels.to(device) 
             #inputs=inputs.view(-1,1)
             labels = labels.view(-1,1)
 
@@ -133,15 +134,16 @@ def train(model, optimizer, loss_func, data_loader, epochs):
         loss_per_epoch.append(running_loss)
         epoch_time_f = monotonic()
         epoch_time.update((epoch_time_f-epoch_time_s))
-        #print("epoch:", epoch, "loss:", running_loss)
+        print("epoch:", epoch, "loss:", running_loss)
     end_time = monotonic()
+    labels, outputs = labels.to(torch.device('cpu')), outputs.to(torch.device('cpu'))
     labels = labels.detach().numpy()
     outputs = outputs.detach().numpy()
     print("Total Time: {:.3f}    Num Epochs: {:d}   Average Epoch: {:.3f}   Average Load: {:.3f}    Average FWD+BWD: {:.3f}    Final Loss: {:.3f}".format(end_time-start_time, epochs, epoch_time.average(),load_time.average(), compute_time.average(), running_loss))
     return outputs, labels, loss_per_epoch
 
 #test network and report statistics
-def test(model, loss_func, data_loader, size):
+def test(model, loss_func, data_loader, size, device):
     test_loss = 0.0
     Labels = None
     output = None
@@ -151,14 +153,15 @@ def test(model, loss_func, data_loader, size):
     for i, data in enumerate(data_loader, 0):
             inputs = data['inputs']
             labels = data['label']
-    
             labels=labels.float()
             labels = labels.view(-1,1)
+            inputs, labels = inputs.to(device), labels.to(device) 
             #model.eval()
             output = model(inputs)
 
             test_loss+=criterion(output, labels)
             print("test loss:",test_loss.item())
+            labels, output = labels.to(torch.device('cpu')), output.to(torch.device('cpu'))
             fractional_error+=abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
     labels = labels.detach().numpy()
     output = output.detach().numpy()
@@ -168,7 +171,8 @@ def test(model, loss_func, data_loader, size):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='emulator net')
-    parser.add_argument('--data_path', type=str, default='../DATA/training/training_data_complete.csv',help='Data path')
+    parser.add_argument('--save_path', type=str, default=None ,help='path to save dictionary of optimizer and model state')
+    parser.add_argument('--load_path', type=str, default=None, help='load state dictionary, try sicn_24000.rprop.pt')
     parser.add_argument('--loss_func', type=str, default='chi-squared', help='loss function to train off, chi-squared or MSE')
     parser.add_argument('--use_cuda', type=bool, default=False, help='Use CUDA if available')
     parser.add_argument('--workers', type=int, default=0, help='Number of dataloader workers')
@@ -185,31 +189,33 @@ if __name__=="__main__":
     print ('device:', device)
 
     
-    training_data = DataClass('/home/jcd496/Aemulus/DATA/training/cosmo_training_data_scaled.csv')    
+    training_data = DataClass('/scratch/jcd496/Aemulus/DATA/training/scaled_full.csv')    
     training_data_loader = DataLoader(training_data, batch_size=len(training_data), shuffle=True, num_workers=args.workers)
     print("training data size", len(training_data))
     
     branch_net = BranchNet()
     optimizer = optim.Rprop(branch_net.parameters())
-    #branch_net.to(device)
+    branch_net.to(device)
     
     #COMMENT BELOW TO TRAIN
-    #state = torch.load('sicn_12000.rprop.pt')
-    #branch_net.load_state_dict(state['model'])
-    #optimizer.load_state_dict(state['optimizer'])
+    if(args.load_path):
+        state = torch.load('sicn_18000.rprop.pt')
+        branch_net.load_state_dict(state['model'])
+        optimizer.load_state_dict(state['optimizer'])
     
 
     #UNCOMMENT BELOW TO TRAIN 
-    outputs, labels, training_loss = train(branch_net, optimizer, args.loss_func, training_data_loader, args.epochs)
-    #torch.save({'model': branch_net.state_dict(),'optimizer': optimizer.state_dict()}, 'sicn_18000.rprop.pt')
+    outputs, labels, training_loss = train(branch_net, optimizer, args.loss_func, training_data_loader, args.epochs, device)
+    if(args.save_path):
+        torch.save({'model': branch_net.state_dict(),'optimizer': optimizer.state_dict()}, args.save_path)
 
-    test_data = DataClass('/home/jcd496/Aemulus/DATA/test/cosmo_test_data_scaled.csv')
-    test_data_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=True, num_workers=args.workers)
+    test_data = DataClass('/scratch/jcd496/Aemulus/DATA/test/scaled_test_data.csv')
+    test_data_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=args.workers)
     print("test data size", len(test_data))
 
-    labels, output, test_loss, fractional_error = test(branch_net, args.loss_func, test_data_loader,len(test_data))
+    labels, output, test_loss, fractional_error = test(branch_net, args.loss_func, test_data_loader,len(test_data), device)
     print("Fractional error:", np.average(fractional_error))
-
+    #print("predictions", output[-9:])
     """if args.loss_func == 'chi-squared':
         print("pointwise:", training_chisquares_pointwise.shape)
         print("avg:", np.average(training_chisquares_pointwise))
