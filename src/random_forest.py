@@ -10,15 +10,15 @@ class Regressor():
         if training_data_path:
             train_data = np.genfromtxt(training_data_path, delimiter=',')
             self.x_train, self.y_train = train_data[:,:num_params], train_data[:,num_params]
-            self.train_error = train_data[:,-1]
+            self.train_error, self.train_bin = train_data[:,num_params+1], train_data[:,num_params+2]
         if test_data_path:
             test_data = np.genfromtxt(test_data_path, delimiter=',')
             self.x_test, self.y_test = test_data[:,:num_params], test_data[:,num_params]
-            self.test_error = test_data[:,-1]
+            self.test_error, self.test_bin = test_data[:,num_params+1], test_data[:, num_params+2]
 
         if not forest_params:
             self.param_grid = {
-                "n_estimators": 10,
+                "n_estimators": 100,
                 "criterion": 'mse',
                 "max_depth": 16,
                 "max_features": 16,
@@ -66,11 +66,17 @@ class Regressor():
         pred = self.forest.predict(self.x_test)
         print(chi_squared(pred,self.y_test,self.test_error))
 
-        print("\nTEST FRACTIONAL ERROR") 
-        print(np.average(np.abs(pred-self.y_test)/self.y_test * 100))
+        print("\nTEST FRACTIONAL ERROR")
+        fractional_error = np.zeros((9,1))
+        frac_err = np.abs(pred-self.y_test)/self.y_test * 100
+        for bin, err in zip(test_bin, frac_err):
+            fractional_error[bin] += err
+        fractional_error = fractional_error / (len(test_bin)/9)  #average over number of elements per bin
+        print(fractional_error)
 
         print("\nPREDICTIONS")
         print(pred)
+
     def infer(self, infer_parameters):
         #pass path to parameters or parameters as a list
         if infer_parameters is str:
