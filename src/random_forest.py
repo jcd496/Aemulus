@@ -10,11 +10,11 @@ class Regressor():
         if training_data_path:
             train_data = np.genfromtxt(training_data_path, delimiter=',')
             self.x_train, self.y_train = train_data[:,:num_params], train_data[:,num_params]
-            self.train_error, self.train_bin = train_data[:,num_params+1], train_data[:,num_params+2].int()
+            self.train_error, self.train_bin = train_data[:,num_params+1], train_data[:,num_params+2].astype(int)
         if test_data_path:
             test_data = np.genfromtxt(test_data_path, delimiter=',')
             self.x_test, self.y_test = test_data[:,:num_params], test_data[:,num_params]
-            self.test_error, self.test_bin = test_data[:,num_params+1], test_data[:, num_params+2].int()
+            self.test_error, self.test_bin = test_data[:,num_params+1], test_data[:, num_params+2].astype(int)
 
         if not forest_params:
             self.param_grid = {
