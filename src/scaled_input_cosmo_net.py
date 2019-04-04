@@ -13,15 +13,16 @@ HOD=8
 LABEL=10+7
 ERROR = 11+7
 NPL = 1024#16  #neurons per layer
-#data class.  loads data from csv file which is stored column wise.  column 0-7 hod training params, column 8 radius training param,
-#column 9 regression target, column 10 error on data point
+#data class.  loads data from csv file which is stored column wise.  column 0-6 cosmo training params, column 7-14 hod training param,
+#column 15 radius, column 16 regression target, column 17 error on regression target, column 18 bin number
 class DataClass(Dataset):
 
     def __init__(self, csv_file):
         self.file = np.genfromtxt(csv_file, delimiter=",")
         self.labels = self.file[:,16]
         self.inputs = self.file[:,:16]
-        
+        self.errors = self.file[:,17]
+        self.bins = self.file[:,18]
 
     def __len__(self):
         return len(self.labels)
@@ -30,7 +31,9 @@ class DataClass(Dataset):
         
         labels = self.labels[idx]
         inputs = self.inputs[idx]
-        sample = {'inputs' : inputs , 'label': labels}
+        error = self.errors[idx]
+        bin = self.bins[idx]
+        sample = {'inputs' : inputs , 'label': labels, 'error': error, 'bin': bin}
         return sample
 
 #branch neural net.  causes radius parameter to "feel" more effect of loss function and reduces computation
@@ -149,22 +152,26 @@ def test(model, loss_func, data_loader, size, device):
     output = None
     
     criterion = nn.MSELoss()
-    fractional_error=np.zeros((size,1),dtype=float) 
+    fractional_error=np.zeros((9,1),dtype=float) 
     for i, data in enumerate(data_loader, 0):
             inputs = data['inputs']
             labels = data['label']
-            labels=labels.float()
-            labels = labels.view(-1,1)
+            labels = labels.float().view(-1,1)
+            error = data['error'].float().view(-1,1)
+            bin = data['bin'].int().view(-1,1)
             inputs, labels = inputs.to(device), labels.to(device) 
             #model.eval()
             output = model(inputs)
 
             test_loss+=criterion(output, labels)
-            print("test loss:",test_loss.item())
+            print("RMSE Loss:",np.sqrt(test_loss.item()))
             labels, output = labels.to(torch.device('cpu')), output.to(torch.device('cpu'))
-            fractional_error+=abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
+            frac_errors = abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
     labels = labels.detach().numpy()
     output = output.detach().numpy()
+    for bin, element in zip(bin,frac_errors):
+        fractional_error[bin] += element
+    fractional_error = fractional_error/(size/9)   #number of elements per bin, result is average fractional error per bin
     return labels, output, test_loss, fractional_error
 
 
@@ -173,7 +180,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='emulator net')
     parser.add_argument('--save_path', type=str, default=None ,help='path to save dictionary of optimizer and model state')
     parser.add_argument('--load_path', type=str, default=None, help='load state dictionary, try sicn_24000.rprop.pt')
-    parser.add_argument('--loss_func', type=str, default='chi-squared', help='loss function to train off, chi-squared or MSE')
+    parser.add_argument('--loss_func', type=str, default='chisquared', help='loss function to train off, chi-squared or MSE')
     parser.add_argument('--use_cuda', type=bool, default=False, help='Use CUDA if available')
     parser.add_argument('--workers', type=int, default=0, help='Number of dataloader workers')
     parser.add_argument('--epochs', type=int, default=1, help='Number of epochs to train over')
@@ -189,24 +196,28 @@ if __name__=="__main__":
     print ('device:', device)
 
     
-    training_data = DataClass('/scratch/jcd496/Aemulus/DATA/training/scaled_full.csv')    
+    training_data = DataClass('/scratch/jcd496/Aemulus/DATA/training/scaled_training_data.csv')    
     training_data_loader = DataLoader(training_data, batch_size=len(training_data), shuffle=True, num_workers=args.workers)
     print("training data size", len(training_data))
     
     branch_net = BranchNet()
     optimizer = optim.Rprop(branch_net.parameters())
-    branch_net.to(device)
+    criterion = None
+    if(args.loss_func == 'chisquared'):
+        criterion = ChiSquare
+    else:
+        criterion = nn.MSEloss()
     
-    #COMMENT BELOW TO TRAIN
     if(args.load_path):
-        state = torch.load(args.load_path)
+        state = torch.load(args.load_path, map_location='cpu')
         branch_net.load_state_dict(state['model'])
         optimizer.load_state_dict(state['optimizer'])
     
 
-    #UNCOMMENT BELOW TO TRAIN 
+    branch_net.to(device)
     outputs, labels, training_loss = train(branch_net, optimizer, args.loss_func, training_data_loader, args.epochs, device)
     if(args.save_path):
+        branch_net.to(torch.device('cpu'))
         torch.save({'model': branch_net.state_dict(),'optimizer': optimizer.state_dict()}, args.save_path)
 
     test_data = DataClass('/scratch/jcd496/Aemulus/DATA/test/scaled_test_data.csv')
@@ -214,8 +225,8 @@ if __name__=="__main__":
     print("test data size", len(test_data))
 
     labels, output, test_loss, fractional_error = test(branch_net, args.loss_func, test_data_loader,len(test_data), device)
-    print("Fractional error:", np.average(fractional_error))
-    #print("predictions", output[-9:])
+    print("Binwise Fractional error:", fractional_error)
+    #print("predictions", output)
     """if args.loss_func == 'chi-squared':
         print("pointwise:", training_chisquares_pointwise.shape)
         print("avg:", np.average(training_chisquares_pointwise))
