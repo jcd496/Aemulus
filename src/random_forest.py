@@ -5,16 +5,16 @@ from sklearn.model_selection import GridSearchCV
 from chi_squared import chi_squared
 
 class Regressor():
-    #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS FOLLOWED BY LABEL AND ENDING WITH ERROR ON LABEL
+    #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS FOLLOWED BY LABEL, ERROR ON LABEL, BIN NUMBER
     def __init__(self, training_data_path, test_data_path, num_params=16, forest_params=None):
         if training_data_path:
             train_data = np.genfromtxt(training_data_path, delimiter=',')
             self.x_train, self.y_train = train_data[:,:num_params], train_data[:,num_params]
-            self.train_error, self.train_bin = train_data[:,num_params+1], train_data[:,num_params+2]
+            self.train_error, self.train_bin = train_data[:,num_params+1], train_data[:,num_params+2].int()
         if test_data_path:
             test_data = np.genfromtxt(test_data_path, delimiter=',')
             self.x_test, self.y_test = test_data[:,:num_params], test_data[:,num_params]
-            self.test_error, self.test_bin = test_data[:,num_params+1], test_data[:, num_params+2]
+            self.test_error, self.test_bin = test_data[:,num_params+1], test_data[:, num_params+2].int()
 
         if not forest_params:
             self.param_grid = {
