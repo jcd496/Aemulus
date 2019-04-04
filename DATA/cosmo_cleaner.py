@@ -10,7 +10,7 @@ hod_data = np.genfromtxt("HOD_parameters_5000.dat", delimiter=" ", dtype=float)
 cosmo_data = np.genfromtxt("cosmological_parameters_full.dat", delimiter="", dtype=float)
 all_data_training=np.empty((720000,19))
 
-for cosmo in range(34): #40
+for cosmo in range(40): #40
 
 	for hod in range(2000): #2000
 		wp_path = "training/wp_covar_results/wp_covar_cosmo_{}_HOD_{}_test_0.dat".format(cosmo, hod)
