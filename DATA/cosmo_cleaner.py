@@ -27,7 +27,7 @@ for cosmo in range(34): #40
 			full_data = np.append(full_data, error)	
 			
 				#complete_training_data[2000*9*cosmo+9*hod+rad]=full_data
-			all_data_training[cosmo*1999*rbin + hod*rbin+rad]=full_data
+			all_data_training[cosmo*2000*rbin + hod*rbin+rad]=full_data
 
 np.random.shuffle(all_data_training)
 np.savetxt('cosmo_training_data.csv', all_data_training[:540000,:], fmt='%f', delimiter=',')
