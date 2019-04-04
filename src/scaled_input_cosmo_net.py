@@ -158,7 +158,7 @@ def test(model, loss_func, data_loader, size, device):
             labels = data['label']
             labels = labels.float().view(-1,1)
             error = data['error'].float().view(-1,1)
-            bin = data['bin'].astype(int).view(-1,1)
+            bin = data['bin'].int().view(-1,1)
             inputs, labels = inputs.to(device), labels.to(device) 
             #model.eval()
             output = model(inputs)
