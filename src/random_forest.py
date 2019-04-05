@@ -45,11 +45,11 @@ class Regressor():
 
         #SAVE NEW MODEL  
         if save_path:      
-            joblib.dump(forest, save_path)
+            joblib.dump(self.forest, save_path)
     
     def load_model(self, load_path):
         #LOAD PRETRAINED FOREST
-        forest = joblib.load(load_path)
+        self.forest = joblib.load(load_path)
 
     def get_feature_importances(self):
         return self.forest.feature_importances_
