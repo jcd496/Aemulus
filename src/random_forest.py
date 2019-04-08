@@ -18,9 +18,9 @@ class Regressor():
 
         if not forest_params:
             self.param_grid = {
-                "n_estimators": 100,
+                "n_estimators": 200,
                 "criterion": 'mse',
-                "max_depth": 16,
+                "max_depth": None,
                 "max_features": 16,
                 "min_samples_split": 2,
                 "min_samples_leaf": 1,
@@ -68,10 +68,10 @@ class Regressor():
 
         print("\nTEST FRACTIONAL ERROR")
         fractional_error = np.zeros((9,1))
-        frac_err = np.abs(pred-self.y_test)/self.y_test * 100
-        for bin, err in zip(test_bin, frac_err):
+        frac_err = np.abs(pred-self.y_test)/self.y_test
+        for bin, err in zip(self.test_bin, frac_err):
             fractional_error[bin] += err
-        fractional_error = fractional_error / (len(test_bin)/9)  #average over number of elements per bin
+        fractional_error = fractional_error / (len(self.test_bin)/9)  #average over number of elements per bin
         print(fractional_error)
 
         print("\nPREDICTIONS")

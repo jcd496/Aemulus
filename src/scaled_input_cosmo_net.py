@@ -166,7 +166,7 @@ def test(model, loss_func, data_loader, size, device):
             test_loss+=criterion(output, labels)
             print("RMSE Loss:",np.sqrt(test_loss.item()))
             labels, output = labels.to(torch.device('cpu')), output.to(torch.device('cpu'))
-            frac_errors = abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()*100
+            frac_errors = abs(output.detach().numpy()-labels.detach().numpy())/labels.detach().numpy()
     labels = labels.detach().numpy()
     output = output.detach().numpy()
     for bin, element in zip(bin,frac_errors):
