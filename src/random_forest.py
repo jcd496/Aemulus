@@ -32,15 +32,19 @@ class Regressor():
         self.forest = RandomForestRegressor(**self.param_grid)
         
         
-        def grid_search(self):
-            grid = GridSearchCV(estimator=self.forest, param_grid=self.param_grid, n_jobs=1)
-            grid.fit(self.x_train,self.y_train)
-            print(grid.best_score_) 
-            print(grid.best_params_) 
-            return grid.best_params_
+    def grid_search(self):
+        grid = GridSearchCV(estimator=self.forest, param_grid=self.param_grid, n_jobs=1)
+        grid.fit(self.x_train,self.y_train)
+        print(grid.best_score_) 
+        print(grid.best_params_) 
+        return grid.best_params_
 
     #ADD ERROR HANDLING try fit, catch if unfit
     def fit(self,save_path=None):
+        if(self.x_train == None):
+            print('No Training Data')
+            return
+
         self.forest.fit(self.x_train,self.y_train)
 
         #SAVE NEW MODEL  
@@ -57,10 +61,10 @@ class Regressor():
     def score(self):
         print("\nR^2 SCORE")
         print(self.forest.score(self.x_test,self.y_test))
-
-        print("\nTRAIN CHI^2")
-        train_pred = self.forest.predict(self.x_train)
-        print(chi_squared(train_pred,self.y_train,self.train_error))
+        if(self.x_train):
+            print("\nTRAIN CHI^2")
+            train_pred = self.forest.predict(self.x_train)
+            print(chi_squared(train_pred,self.y_train,self.train_error))
     
         print("\nTEST CHI^2")
         pred = self.forest.predict(self.x_test)
