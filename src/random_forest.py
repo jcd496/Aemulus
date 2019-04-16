@@ -20,8 +20,8 @@ class Regressor():
             self.param_grid = {
                 "n_estimators": 200,
                 "criterion": 'mse',
-                "max_depth": None,
-                "max_features": 16,
+                "max_depth": num_params,
+                "max_features": num_params,
                 "min_samples_split": 2,
                 "min_samples_leaf": 1,
                 "bootstrap": True
@@ -41,7 +41,7 @@ class Regressor():
 
     #ADD ERROR HANDLING try fit, catch if unfit
     def fit(self,save_path=None):
-        if(self.x_train == None):
+        if not 'x_train' in dir(self):
             print('No Training Data')
             return
 
@@ -61,7 +61,7 @@ class Regressor():
     def score(self):
         print("\nR^2 SCORE")
         print(self.forest.score(self.x_test,self.y_test))
-        if(self.x_train):
+        if 'x_train' in dir(self):
             print("\nTRAIN CHI^2")
             train_pred = self.forest.predict(self.x_train)
             print(chi_squared(train_pred,self.y_train,self.train_error))
@@ -72,7 +72,7 @@ class Regressor():
 
         print("\nTEST FRACTIONAL ERROR")
         fractional_error = np.zeros((9,1))
-        frac_err = np.abs(pred-self.y_test)/self.y_test
+        frac_err = np.abs(pred-self.y_test)/self.test_error
         for bin, err in zip(self.test_bin, frac_err):
             fractional_error[bin] += err
         fractional_error = fractional_error / (len(self.test_bin)/9)  #average over number of elements per bin
