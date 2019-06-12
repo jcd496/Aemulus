@@ -18,9 +18,9 @@ class Regressor():
 
         if not forest_params:
             self.param_grid = {
-                "n_estimators": 200,
+                "n_estimators": 100,
                 "criterion": 'mse',
-                "max_depth": num_params,
+                "max_depth": None,
                 "max_features": num_params,
                 "min_samples_split": 2,
                 "min_samples_leaf": 1,
