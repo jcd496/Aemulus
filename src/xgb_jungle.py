@@ -6,7 +6,7 @@ from chi_squared import chi_squared
 import xgboost as xgb
 class XGBJungle():
     #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS(cosmo + hod + radius) FOLLOWED BY LABEL, ERROR ON LABEL, BIN NUMBER
-    def __init__(self, training_data_path, test_data_path, num_params=16, forest_params=None):
+    def __init__(self, training_data_path, test_data_path, num_params=16, jungle_params=None):
         if training_data_path:
             train_data = np.genfromtxt(training_data_path, delimiter=',')
             train_data = train_data[train_data[:,-1].argsort()]
@@ -23,7 +23,7 @@ class XGBJungle():
         if training_data_path:
             self.bin_size = self.x_train.shape[0]//self.bins
         self.bin_size_test = self.x_test.shape[0]//self.bins
-        if not forest_params:
+        if not jungle_params:
             self.param_grid  = [{
                 'subsample': 0.75, 
                 'num_parallel_tree':10, 
@@ -33,14 +33,14 @@ class XGBJungle():
                 'eta':0.01} 
                 for _ in range(9) ]
         else:
-            self.param_grid=forest_params
+            self.param_grid=jungle_params
         print("FOREST PARAMETERS:", self.param_grid)
         
-    def fit(self,save_path=None, num_round=500, tolerance=3):
+    def fit(self,save_path=None, num_round=2000, tolerance=3):
         if not 'x_train' in dir(self):
             print('No Training Data')
             return
-        self.forest=[]
+        self.jungle=[]
         for i in range(self.bins):
             chunk = i*self.bin_size
             dtrain = xgb.DMatrix(self.x_train[chunk:chunk+self.bin_size], label=self.y_train[chunk:chunk+self.bin_size])
@@ -49,17 +49,17 @@ class XGBJungle():
             dtest = xgb.DMatrix(self.x_test[chunk_test:chunk_test+self.bin_size_test], label=self.y_test[chunk_test:chunk_test+self.bin_size_test])
             print('Fitting Bin', i)
             bst = xgb.train(self.param_grid[i], dtrain, num_round, evals=[(dtrain, 'train'),(dtest, 'eval')], early_stopping_rounds=tolerance)
-            self.forest.append(bst)
+            self.jungle.append(bst)
         #SAVE NEW MODEL  
         if save_path:      
-            joblib.dump(self.forest, save_path)
+            joblib.dump(self.jungle, save_path)
     
     def load_model(self, load_path):
         #LOAD PRETRAINED FOREST
-        self.forest = joblib.load(load_path)
+        self.jungle = joblib.load(load_path)
     
     def get_feature_importances(self):
-        FI = [self.forest[i].get_fscore() for i in range(self.bins)]
+        FI = [self.jungle[i].get_fscore() for i in range(self.bins)]
         return FI
     
     def score(self):
@@ -68,7 +68,7 @@ class XGBJungle():
         for i in range(self.bins):
             chunk_test = i*self.bin_size_test
             dtest = xgb.DMatrix(self.x_test[chunk_test:chunk_test+self.bin_size_test], label=self.y_test[chunk_test:chunk_test+self.bin_size_test])
-            predictions = self.forest[i].predict(dtest).tolist()
+            predictions = self.jungle[i].predict(dtest).tolist()
             for j in range(chunk_test, chunk_test + self.bin_size_test):
                 pred[j] = predictions[j-chunk_test]
         print(chi_squared(pred,self.y_test,self.test_error))
@@ -95,5 +95,5 @@ class XGBJungle():
         idx = parameters[-1].item()
         X = xgb.DMatrix(parameters[:-1])
       
-        prediction = self.forest[idx].predict(X)
+        prediction = self.jungle[idx].predict(X)
         return prediction
