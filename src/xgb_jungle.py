@@ -5,7 +5,7 @@ from sklearn.model_selection import GridSearchCV
 from chi_squared import chi_squared
 import xgboost as xgb
 class XGBRegressor():
-    #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS FOLLOWED BY LABEL, ERROR ON LABEL, BIN NUMBER
+    #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS(cosmo + hod + radius) FOLLOWED BY LABEL, ERROR ON LABEL, BIN NUMBER
     def __init__(self, training_data_path, test_data_path, num_params=16, forest_params=None):
         if training_data_path:
             train_data = np.genfromtxt(training_data_path, delimiter=',')
@@ -24,23 +24,19 @@ class XGBRegressor():
             self.bin_size = self.x_train.shape[0]//self.bins
         self.bin_size_test = self.x_test.shape[0]//self.bins
         if not forest_params:
-            self.param_grid  = {
-                'max_depth':0,
-                'tree_method':'hist',
-                'grow_policy':'lossguide',
-                'max_leaves':10000,
-                'objective':'reg:squarederror',
-                'eta':0.1,
-                'nthread':2,
-                'min_child_weight':1 ,
-                'gamma':10 
-                }
-                
+            self.param_grid  = [{
+                'subsample': 0.75, 
+                'num_parallel_tree':10, 
+                'num_boost_round':1, 
+                'max_depth':15, 
+                'objective':'reg:squarederror', 
+                'eta':0.01} 
+                for _ in range(9) ]
         else:
             self.param_grid=forest_params
         print("FOREST PARAMETERS:", self.param_grid)
         
-    def fit(self,save_path=None, num_round=10, tolerance=3):
+    def fit(self,save_path=None, num_round=500, tolerance=3):
         if not 'x_train' in dir(self):
             print('No Training Data')
             return
@@ -51,8 +47,8 @@ class XGBRegressor():
             
             chunk_test = i*self.bin_size_test
             dtest = xgb.DMatrix(self.x_test[chunk_test:chunk_test+self.bin_size_test], label=self.y_test[chunk_test:chunk_test+self.bin_size_test])
-            
-            bst = xgb.train(self.param_grid, dtrain, num_round, evals=[(dtrain, 'train'),(dtest, 'eval')], early_stopping_rounds=tolerance)
+            print('Fitting Bin', i)
+            bst = xgb.train(self.param_grid[i], dtrain, num_round, evals=[(dtrain, 'train'),(dtest, 'eval')], early_stopping_rounds=tolerance)
             self.forest.append(bst)
         #SAVE NEW MODEL  
         if save_path:      
@@ -72,11 +68,14 @@ class XGBRegressor():
         for i in range(self.bins):
             chunk_test = i*self.bin_size_test
             dtest = xgb.DMatrix(self.x_test[chunk_test:chunk_test+self.bin_size_test], label=self.y_test[chunk_test:chunk_test+self.bin_size_test])
-            pred[i] += self.forest[i].predict(dtest)
+            predictions = self.forest[i].predict(dtest).tolist()
+            for j in range(chunk_test, chunk_test + self.bin_size_test):
+                pred[j] = predictions[j-chunk_test]
         print(chi_squared(pred,self.y_test,self.test_error))
     
         print("\nTEST FRACTIONAL ERROR")
         fractional_error = np.zeros((self.bins,1))
+        #frac_err = np.abs(pred-self.y_test)/self.y_test
         frac_err = np.abs(pred-self.y_test)/self.test_error
         for bin, err in zip(self.test_bin, frac_err):
             fractional_error[bin] += err
