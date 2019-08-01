@@ -4,7 +4,7 @@ from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
 from chi_squared import chi_squared
 import xgboost as xgb
-class XGBRegressor():
+class XGBJungle():
     #CSV FILES WITH COLUMNS ORDERED AS: PARAMETERS(cosmo + hod + radius) FOLLOWED BY LABEL, ERROR ON LABEL, BIN NUMBER
     def __init__(self, training_data_path, test_data_path, num_params=16, forest_params=None):
         if training_data_path:
