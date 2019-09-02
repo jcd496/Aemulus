@@ -13,6 +13,8 @@ Scaled input neural network is feed forward deep net. Model can be saved, loaded
 
 Numpy
 
+Sci-Kit Learn
+
 Pytorch
 
 XGBoost
