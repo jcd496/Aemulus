@@ -9,4 +9,10 @@ XGBJungle class handles data as well as fitting or loading an existing model.
 
 Scaled input neural network is feed forward deep net. Model can be saved, loaded, trained, inferred upon.
 
+## Dependencies
 
+Numpy
+
+Pytorch
+
+XGBoost
